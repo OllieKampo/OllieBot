@@ -1,23 +1,13 @@
-from collections import defaultdict, deque
 import os
 import random
 import re
-from time import sleep
-from typing import Callable, Coroutine, List, Optional, Union
+import sqlite3
+from typing import Union
 from twitchio.ext import commands # eventsub, pubsub
 import twitchio
 from Core.MessageFunctions import get_command_string, get_user
 
 from Cogs.Pyramids import PyramidHandler
-
-# a = eventsub.EventSubClient()
-# a.subscribe_channel_points_redeemed()
-
-# twitchio.CustomReward
-# twitchio.CustomRewardRedemption
-
-# u = twitchio.User()
-# u.get_custom_rewards()
 
 class OllieBot(commands.Bot):
     """
@@ -27,9 +17,9 @@ class OllieBot(commands.Bot):
     def __init__(self,
                  token: str,
                  client_id: str,
-                 initial_channels: Union[str, List[str]]):
+                 initial_channels: Union[str, list[str]]):
         
-        _initial_channels: List[str]
+        _initial_channels: list[str]
         if not isinstance(initial_channels, list):
             _initial_channels = [initial_channels]
         else: _initial_channels = initial_channels
@@ -38,12 +28,8 @@ class OllieBot(commands.Bot):
         super().__init__(token,
                          client_id=client_id,
                          initial_channels=_initial_channels,
-                         nick="OllieDoggoBot",
+                         nick="DoggieKampo",
                          prefix='?')
-        
-        # live_chat_logs: dict[str, deque[str]] ## Maps: chatter name -> list of chat messages
-        
-        self.__modes: dict[str, bool] = defaultdict(lambda: False)
         
         self.__pyramid_handler = PyramidHandler()
         self.add_cog(self.__pyramid_handler)
@@ -60,26 +46,10 @@ class OllieBot(commands.Bot):
         return await super().event_part(user)
     
     ##################################################################################
-    #### Module modes and variables
-    
-    async def set_mode(self, mode: str) -> bool:
-        "Set the given mode to be enabled if it was disabled, and disabled if it was enabled."
-        self.__modes[mode] = not self.__modes[mode]
-        return self.__modes[mode]
-    
-    async def is_valid_mode(self, mode: str) -> bool:
-        return mode in ["echo", "pyramidtheif", "pyramiddestroyer", "timeout-failed-pyramid"]
-    
-    ## ?set variables failed_pyramid_timeout_length={"base" : 600, "grow_by" : 5.0}
-    ## ?set variables failed_pyramid_accumulation_reset="24h"
-    
-    ##################################################################################
     #### Messages
     
     async def event_message(self, message: twitchio.Message) -> None:
         "Event called when a PRIVMSG is received from Twitch."
-        ## Log to a rotating file handler keeping below 100MB, every time 10 log files are full, 7zip them.
-        # print(f"Message from {message.author.name}: {message.content}, {message.tags=}")
         
         ## Ignore all `self messages`
         if message.echo:
@@ -89,33 +59,10 @@ class OllieBot(commands.Bot):
         
         await self.__pyramid_handler.handle_pyramids(context)
         
-        if re.search("sent love to @?OllieDoggoBot", str(message.content)) is not None:
+        if re.search("sent love to @?DoggieKampo", str(message.content)) is not None:
             await context.send(f"!love @{str(message.content).split(' ')[0]}")
         
         await self.handle_commands(message)
-    
-    async def event_usernotice_subscription(self, metadata):
-        "Event called when a USERNOTICE subscription or re-subscription event is received from Twitch."
-        return await super().event_usernotice_subscription(metadata)
-    
-    ##################################################################################
-    #### Raw data
-    
-    async def event_raw_usernotice(self, channel: twitchio.Channel, tags: dict):
-        "Event called when a USERNOTICE is received from Twitch."
-        return await super().event_raw_usernotice(channel, tags)
-    
-    async def event_raw_data(self, data: str):
-        pass # print(f"Raw data received: {data!s}")
-    
-    ##################################################################################
-    #### ????
-    
-    async def event_mode(self, channel: twitchio.Channel, user: twitchio.User, status: str):
-        pass # print(f"Event mode: {channel=}, {user=}, {status=}")
-    
-    async def event_userstate(self, user: twitchio.User):
-        pass # print(f"Event user state: {user=}")
     
     ##################################################################################
     #### Built-in commands
@@ -144,18 +91,23 @@ class OllieBot(commands.Bot):
         else: await context.send(f"The die is rolled PauseChamp The chatter survives widepeepoHappy")
     
     @commands.command()
-    async def mode(self, context: commands.Context) -> None:
-        "Enable or disable certain operating modes of the bot."
-        if context.author.is_mod:
-            _command: str = str(context.message.content).lower().removeprefix("?mode ")
-            if await self.is_valid_mode(_command):
-                enabled: bool = await self.set_mode(_command)
-                await context.send(f"{context.author.name}: {_command} mode was "
-                                   + ("enabled" if enabled else "disabled"))
-            else: await context.send(f"{context.author.name}: {_command} mode is not recognised")
+    async def high_stakes_roulette(self, context: commands.Context) -> None:
+        if not random.randint(0, 1):
+            await context.send(f"/timeout {context.author.name} 2m")
+            await context.send("I didn't bother rolling the die YEP I decided you lost anyway BigBrother")
+        elif not random.randint(0, 5):
+            await context.send(f"/timeout {context.author.name} 2m")
+            await context.send("The die is rolled PauseChamp The chatter is lost PepeHands")
+        else: await context.send("The die is rolled PauseChamp The chatter survives widepeepoHappy")
+    
+    @commands.command()
+    async def low_stakes_roulette(self, context: commands.Context) -> None:
+        await context.send(f"/timeout {context.author.name} 2m")
+        await context.send(f"Coward {context.author.name} :)")
 
 if __name__ == "__main__":
-    ollie_bot = OllieBot(os.getenv('TMI_TOKEN'),
-                         os.getenv('CLIENT_ID'),
+    ollie_bot = OllieBot(os.getenv("TMI_TOKEN"),
+                         os.getenv("CLIENT_ID"),
                          "Froggen")
+    
     ollie_bot.run()

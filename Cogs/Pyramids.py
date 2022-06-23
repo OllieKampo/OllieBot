@@ -1,5 +1,7 @@
+from asyncio import Lock
 import sqlite3
 import argparse
+
 from typing import Literal, Optional
 import twitchio
 from twitchio.ext import commands
@@ -44,10 +46,15 @@ class PyramidHandler(OllieBotCog):
         self.__timeout: bool = True
         
         ## Pyramid tracking variables
+        self.__lock: Lock = Lock()
         self.__last_sender_name: str = ""
         self.__pyramid_emote: str = ""
         self.__pyramid_progress: int = 0
         self.__pyramid_max_height: int = 0
+    
+    @classmethod
+    def module_name() -> str:
+        return "pyramids"
     
     @classmethod
     def module_modes() -> dict[str, bool]:
@@ -55,97 +62,91 @@ class PyramidHandler(OllieBotCog):
     
     async def handle_pyramids(self, context: commands.Context) -> None:
         "Handle the pyramids for the given chat message, requires echo messages."
-        
-        message: twitchio.Message = get_message(context)
-        split_message: list[str] = str(message.content).split(" ")
-        current_sender_name: str = str(context.author.name)
-        is_stolen: bool = False
-        
-        print(f"Before: current pyramider={current_sender_name}, message emote={split_message[0]}, last pyramider={self.__last_sender_name}, current emote={self.__pyramid_emote}, progress={self.__pyramid_progress}")
-        
-        ## The pyramid has been progressed correctly iff;
-        ##      - All the words in the message are the same,
-        ##      - The number of messages is one greater or one smaller than the number in the previous level.
-        if valid := (all(emote == self.__pyramid_emote
-                         for emote in split_message)
-                     and ((pyramid_level := len(split_message))
-                         in [self.__pyramid_progress + 1,
-                             self.__pyramid_progress - 1])):
+        async with self.__lock:
+            message: twitchio.Message = get_message(context)
+            split_message: list[str] = str(message.content).split(" ")
+            current_sender_name: str = str(context.author.name)
+            is_stolen: bool = False
             
-            ## Check whether we are going down or up the pyramid
-            on_downwards: bool = pyramid_level == (self.__pyramid_progress - 1)
-            on_upwards: bool = not on_downwards
-            
-            ## Update the progres of the pyramid
-            self.__pyramid_max_height = max(self.__pyramid_max_height, pyramid_level)
-            self.__pyramid_progress = pyramid_level
-            print(f"Pyramid height: current level = {pyramid_level}, max height at = {self.__pyramid_max_height}")
-            
-            ## Try to destroy the pyramid after level 3
-            if self.__destroy and on_upwards and pyramid_level == 3:
-                await context.send(f"No {message.author.name} :)")
-            
-            ## Try to steal the pyramid on the last emote
-            if self.__theif and on_downwards and pyramid_level == 2:
-                await context.send(f"{self.__pyramid_emote}")
-            
-            print(f"Success check: direction correct = {on_downwards}, level = {pyramid_level}, max height = {self.__pyramid_max_height}")
-            
-            ## Declare success if the pyramid is complete
-            if (on_downwards and pyramid_level == 1
-                and self.__pyramid_max_height >= 3):
+            ## The pyramid has been progressed correctly iff;
+            ##      - All the words in the message are the same,
+            ##      - The number of messages is one greater or one smaller than the number in the previous level.
+            if valid := (all(emote == self.__pyramid_emote
+                            for emote in split_message)
+                        and ((pyramid_level := len(split_message))
+                            in [self.__pyramid_progress + 1,
+                                self.__pyramid_progress - 1])):
                 
-                ## The pyramid was stolen iff the current sender is not the same as the last
-                is_stolen = current_sender_name != self.__last_sender_name
+                ## Check whether we are going down or up the pyramid
+                on_downwards: bool = pyramid_level == (self.__pyramid_progress - 1)
+                on_upwards: bool = not on_downwards
                 
-                if (self.__pyramid_max_height == 3
-                    and not is_stolen
-                    and any((user_type in context.author.badges
-                             and context.author.badges[user_type] == 1)
-                            for user_type in ["vip", "moderator"])):
-                    await context.send(f"That doesn't count {current_sender_name} Weirdge")
-                    return
+                ## Update the progres of the pyramid
+                self.__pyramid_max_height = max(self.__pyramid_max_height, pyramid_level)
+                self.__pyramid_progress = pyramid_level
                 
-                ## Declare success
-                await self.declare_pyramid(current_sender_name, result="success", stolen=is_stolen, size=self.__pyramid_max_height)
-                if current_sender_name != "OllieDoggoBot":
-                    total_successes = await self.get_score(current_sender_name, score="success")
-                    await context.send(f"OhMyDog Nice pyramid {current_sender_name} POGGERS Thats your {make_ordinal(total_successes)} successful pyramid Radge"
-                                       + (f" You stole it from {self.__last_sender_name} PepeLaugh" if is_stolen else ""))
-        
-        ## This is a failed pyramid iff;
-        ##      - It is invalid but has progressed beyond its base size,
-        ##      - Or it was stolen.
-        if (not valid and self.__pyramid_progress >= 2) or is_stolen:
-            await self.declare_pyramid(self.__last_sender_name, result="failed")
-            total_failures = await self.get_score(self.__last_sender_name, score="failed")
-            
-            if self.__timeout:
-                if current_sender_name == "OllieDoggoBot":
-                    await context.send(f"Get absolutely destroyed {self.__last_sender_name} EZ Clap Thats your {make_ordinal(total_failures)} failed pyramid WeirdChamping See you in 10 peepoHey")
-                else: await context.send(f"You tried {self.__last_sender_name}, you failed :) Thats your {make_ordinal(total_failures)} failed pyramid WeirdChamping See you in 10 peepoHey")
+                ## Try to destroy the pyramid after level 3
+                if self.__destroy and on_upwards and pyramid_level == 3:
+                    await context.send(f"No {message.author.name} :)")
                 
-                ## Timeout the last sender to post a valid level of the pyramid.
-                await context.send(f"/timeout {self.__last_sender_name} 600")
+                ## Try to steal the pyramid on the last emote
+                if self.__theif and on_downwards and pyramid_level == 2:
+                    await context.send(f"{self.__pyramid_emote}")
+                
+                ## Declare success if the pyramid is complete
+                if (on_downwards and pyramid_level == 1
+                    and self.__pyramid_max_height >= 3):
+                    
+                    ## The pyramid was stolen iff the current sender is not the same as the last
+                    is_stolen = current_sender_name != self.__last_sender_name
+                    
+                    if (self.__pyramid_max_height == 3
+                        and not is_stolen
+                        and any((user_type in context.author.badges
+                                and context.author.badges[user_type] == "1")
+                                for user_type in ["vip", "moderator"])):
+                        await context.send(f"That doesn't count {current_sender_name} Weirdge")
+                        return
+                    
+                    ## Declare success
+                    await self.declare_pyramid(current_sender_name, result="success", stolen=is_stolen, size=self.__pyramid_max_height)
+                    if current_sender_name != "OllieDoggoBot":
+                        total_successes = await self.get_score(current_sender_name, score="success")
+                        await context.send(f"OhMyDog Nice pyramid {current_sender_name} POGGERS Thats your {make_ordinal(total_successes)} successful pyramid Radge"
+                                           + (f" You stole it from {self.__last_sender_name} PepeLaugh" if is_stolen else ""))
+                        ## TODO update to be stolen from any previous chatter: self.__last_different_chatter
             
-            else: await context.send(f"Absolute failure {self.__last_sender_name} PogO Thats your {make_ordinal(total_failures)} failed pyramid WeirdChamping")
+            ## This is a failed pyramid iff;
+            ##      - It is invalid but has progressed beyond its base size,
+            ##      - Or it was stolen.
+            if (not valid and self.__pyramid_progress >= 2) or is_stolen:
+                await self.declare_pyramid(self.__last_sender_name, result="failed")
+                total_failures = await self.get_score(self.__last_sender_name, score="failed")
+                
+                if self.__timeout:
+                    if current_sender_name == "OllieDoggoBot":
+                        await context.send(f"Get absolutely destroyed {self.__last_sender_name} EZ Clap Thats your {make_ordinal(total_failures)} failed pyramid WeirdChamping See you in 10 peepoHey")
+                    else: await context.send(f"You tried {self.__last_sender_name}, you failed :) Thats your {make_ordinal(total_failures)} failed pyramid WeirdChamping See you in 10 peepoHey")
+                    
+                    ## Timeout the last sender to post a valid level of the pyramid.
+                    await context.send(f"/timeout {self.__last_sender_name} 600")
+                
+                else: await context.send(f"Absolute failure {self.__last_sender_name} PogO Thats your {make_ordinal(total_failures)} failed pyramid WeirdChamping")
+                
+                ## If the pyramid was blocked
+                if not is_stolen and current_sender_name != self.__last_sender_name:
+                    await self.declare_pyramid(current_sender_name, result="blocked")
+                    total_blocked = await self.get_score(current_sender_name, score="blocked")
+                    await context.send(f"Nice block {current_sender_name} BASED Thats your {make_ordinal(total_blocked)} blocked pyramid YEP")
             
-            ## If the pyramid was blocked
-            if not is_stolen and current_sender_name != self.__last_sender_name:
-                await self.declare_pyramid(current_sender_name, result="blocked")
-                total_blocked = await self.get_score(current_sender_name, score="blocked")
-                await context.send(f"Nice block {current_sender_name} BASED Thats your {make_ordinal(total_blocked)} blocked pyramid YEP")
-        
-        ## Reset the pyramid if it is no longer valid (it was not progressed correctly).
-        if not valid:
-            self.__pyramid_emote = split_message[0]
-            self.__pyramid_max_height = 1
-            self.__pyramid_progress = 1
-        
-        ## Keep track to sent the most recent valid level in the pyramid
-        self.__last_sender_name = current_sender_name
-        
-        print(f"After: Current pyramider={self.__last_sender_name}, emote={self.__pyramid_emote}, progress={self.__pyramid_progress}")
+            ## Reset the pyramid if it is no longer valid (it was not progressed correctly).
+            if not valid:
+                self.__pyramid_emote = split_message[0]
+                self.__pyramid_max_height = 1
+                self.__pyramid_progress = 1
+            
+            ## Keep track to sent the most recent valid level in the pyramid
+            self.__last_sender_name = current_sender_name
     
     async def declare_pyramid(self,
                               chatter_name: str,
