@@ -83,6 +83,10 @@ class OllieBot(commands.Bot):
         else: await context.send(f"OhMyDog Woof woof Herrow {user_name} OhMyDog")
     
     @commands.command()
+    async def treat(self, context: commands.Context) -> None:
+        ... ## TODO
+    
+    @commands.command()
     async def roulette(self, context: commands.Context) -> None:
         "The chatter has a 1 in 6 chance of being timed out for 2 minutes."
         if not random.randint(0, 5):
@@ -106,8 +110,28 @@ class OllieBot(commands.Bot):
         await context.send(f"Coward {context.author.name} :)")
 
 if __name__ == "__main__":
+    connection: sqlite3.Connection = sqlite3.connect("SQL/twitch_channels.sqlite3")
+    cursor: sqlite3.Cursor = connection.cursor()
+    cursor.execute("""
+                   SELECT channel_name
+                   FROM channels
+                   """)
+    channel_list: list[str] = cursor.fetchall()
+    connection.close()
+    
     ollie_bot = OllieBot(os.getenv("TMI_TOKEN"),
                          os.getenv("CLIENT_ID"),
                          "Froggen")
-    
     ollie_bot.run()
+
+class ChannelJoiner:
+    def __init__(self) -> None:
+        pass
+    
+    ## This has to have a socket or something similar that;
+    ##      - blocks and waits for a redirect from twitch with an auth token,
+    ##      - accepts the connection,
+    ##      - obtains the user id (how do we obtain this?) and the auth token,
+    ##      - it then saves to the sql database; channel_name, channel_owner_id, join_date, enabled, auth_token, refresh_token, tokens_valid
+    ##      - it then calls a join channel method with the given channel name that queries the database again, loads the api tokens to be used by the HTTP "requests" connection for api calls related to that specific channel,
+    ##      - this then in turn calls twitchio's join channel method, which connects to the twitch IRC server.

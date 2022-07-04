@@ -205,25 +205,31 @@ class PyramidHandler(OllieBotCog):
                               """)
         return self.__cursor.fetchall()
     
-    def _get_pyramid_score_args(self, context: commands.Context) -> tuple[str, str]:
+    def _get_pyramid_score_args(self, context: commands.Context, user_optional: bool = True) -> tuple[str, str]:
         if not hasattr(self, "pyramid_score_parser"):
             
             parser = argparse.ArgumentParser()
-            parser.add_argument("score", type=str)
+            parser.add_argument("score", type=str, choices=["success", "failed", "blocked", "stolen"])
             parser.add_argument("-user", type=str, default=None)
             
             self.pyramid_score_parser = parser
         
         namespace: argparse.Namespace = self.pyramid_score_parser.parse_known_args(get_command_string(context, split=True))[0]
         
-        return (namespace.score, namespace.user.lower() if namespace.user is not None else context.author.name)
+        user: str = namespace.user.lower()
+        if user is None:
+            if user_optional:
+                user = context.author.name.lower()
+            else: raise ValueError("User is required.")
+        if user.startswith("@"):
+            user = user[1:]
+        
+        return (namespace.score, user)
     
     @commands.command()
     async def pyramid_score(self, context: commands.Context) -> None:
         sender: str = context.author.name
         score_type, user = self._get_pyramid_score_args(context)
-        if user.startswith("@"):
-            user = user[1:]
         if score_type in ["success", "failed", "blocked", "stolen"]:
             score: Optional[int] = await self.get_score(user, score_type)
             if score is not None:
@@ -242,6 +248,18 @@ class PyramidHandler(OllieBotCog):
             await context.send(f"{sender} : Current high scores for {'completed' if score_type == 'success' else score_type} pyramids :: "
                                + ", ".join(f"{make_ordinal(i)}: {result[1]} - {result[0]}" for i, result in enumerate(high_scores, start=1)))
         else: await context.send(f"{sender} : Unkown score type, must be one of; success, failed, blocked, stolen")
+    
+    @commands.command()
+    async def add_pyramid(self, context: commands.Context) -> None:
+        if context.author.is_mod and context.author.name.lower() == "olliekampo":
+            sender: str = context.author.name
+            try:
+                score_type, user = self._get_pyramid_score_args(context, user_optional=False)
+            except ValueError:
+                await context.send(f"{sender} : You must specify a user to declare a pyramid.")
+                return
+            await self.declare_pyramid(user, score_type)
+            await context.send(f"{sender} : Declared pyramid as '{score_type}' for {user}.")
 
 def make_ordinal(number: int) -> str:
     """
