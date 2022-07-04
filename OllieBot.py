@@ -57,6 +57,11 @@ class OllieBot(commands.Bot):
         
         context: commands.Context = await self.get_context(message)
         
+        # user = await context.channel.user(force=True)
+        # print(user.view_count)
+        # user.create_prediction()
+        # user.end_prediction()
+        
         await self.__pyramid_handler.handle_pyramids(context)
         
         if re.search("sent love to @?DoggieKampo", str(message.content)) is not None:
@@ -110,23 +115,23 @@ class OllieBot(commands.Bot):
         await context.send(f"Coward {context.author.name} :)")
 
 if __name__ == "__main__":
-    connection: sqlite3.Connection = sqlite3.connect("SQL/twitch_channels.sqlite3")
-    cursor: sqlite3.Cursor = connection.cursor()
-    cursor.execute("""
-                   SELECT channel_name
-                   FROM channels
-                   """)
-    channel_list: list[str] = cursor.fetchall()
-    connection.close()
+    # connection: sqlite3.Connection = sqlite3.connect("SQL/twitch_channels.sqlite3")
+    # cursor: sqlite3.Cursor = connection.cursor()
+    # cursor.execute("""
+    #                SELECT channel_name
+    #                FROM channels
+    #                """)
+    # channel_list: list[str] = cursor.fetchall()
+    # connection.close()
     
     ollie_bot = OllieBot(os.getenv("TMI_TOKEN"),
                          os.getenv("CLIENT_ID"),
                          "Froggen")
     ollie_bot.run()
 
-class ChannelJoiner:
-    def __init__(self) -> None:
-        pass
+# class ChannelJoiner:
+#     def __init__(self) -> None:
+#         pass
     
     ## This has to have a socket or something similar that;
     ##      - blocks and waits for a redirect from twitch with an auth token,

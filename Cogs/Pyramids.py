@@ -216,15 +216,15 @@ class PyramidHandler(OllieBotCog):
         
         namespace: argparse.Namespace = self.pyramid_score_parser.parse_known_args(get_command_string(context, split=True))[0]
         
-        user: str = namespace.user.lower()
+        user: str = namespace.user
         if user is None:
             if user_optional:
-                user = context.author.name.lower()
+                user = context.author.name
             else: raise ValueError("User is required.")
         if user.startswith("@"):
             user = user[1:]
         
-        return (namespace.score, user)
+        return (namespace.score, user.lower())
     
     @commands.command()
     async def pyramid_score(self, context: commands.Context) -> None:
