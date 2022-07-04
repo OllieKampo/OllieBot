@@ -1,8 +1,10 @@
+from datetime import datetime, timedelta
 import os
 import random
 import re
 import sqlite3
 from typing import Union
+import requests
 from twitchio.ext import commands # eventsub, pubsub
 import twitchio
 from Core.MessageFunctions import get_command_string, get_user
@@ -31,6 +33,9 @@ class OllieBot(commands.Bot):
                          nick="DoggieKampo",
                          prefix='?')
         
+        self.__last_online_get_time: dict[str, datetime] = {}
+        self.__online: dict[str, bool] = {}
+        
         self.__pyramid_handler = PyramidHandler()
         self.add_cog(self.__pyramid_handler)
     
@@ -48,6 +53,27 @@ class OllieBot(commands.Bot):
     ##################################################################################
     #### Messages
     
+    async def __is_online(self, channel: str) -> bool:
+        """Check if the channel is online."""
+        time_now = datetime.now()
+        
+        if (channel not in self.__last_online_get_time
+            or (time_now - self.__last_online_get_time[channel]) > timedelta(seconds=15)):
+            
+            self.__last_online_get_time[channel] = time_now
+            
+            response = requests.get(f"https://api.twitch.tv/helix/streams?user_login={channel}",
+                                    headers={"Authorization" : f"Bearer {os.getenv('APP_TOKEN')}",
+                                             "Client-Id" : os.getenv("CLIENT_ID")}).json()
+            
+            if "error" in response:
+                self.__online[channel] = False
+                raise RuntimeError(f"{response['error']} ({response['status']}) : {response['message']}")
+            
+            self.__online[channel] = response["data"] != []
+        
+        return self.__online[channel]
+    
     async def event_message(self, message: twitchio.Message) -> None:
         "Event called when a PRIVMSG is received from Twitch."
         
@@ -62,7 +88,13 @@ class OllieBot(commands.Bot):
         # user.create_prediction()
         # user.end_prediction()
         
-        await self.__pyramid_handler.handle_pyramids(context)
+        try:
+            online = await self.__is_online(message.channel.name)
+        except RuntimeError as e:
+            print(e)
+        
+        if online:
+            await self.__pyramid_handler.handle_pyramids(context)
         
         if re.search("sent love to @?DoggieKampo", str(message.content)) is not None:
             await context.send(f"!love @{str(message.content).split(' ')[0]}")
