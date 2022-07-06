@@ -209,7 +209,7 @@ class PyramidHandler(OllieBotCog):
         if not hasattr(self, "pyramid_score_parser"):
             
             parser = argparse.ArgumentParser()
-            parser.add_argument("score", type=str, choices=["success", "failed", "blocked", "stolen"])
+            parser.add_argument("score", type=str)
             parser.add_argument("-user", type=str, default=None)
             
             self.pyramid_score_parser = parser
@@ -230,24 +230,27 @@ class PyramidHandler(OllieBotCog):
     async def pyramid_score(self, context: commands.Context) -> None:
         sender: str = context.author.name
         score_type, user = self._get_pyramid_score_args(context)
-        if score_type in ["success", "failed", "blocked", "stolen"]:
+        if score_type not in ["success", "failed", "blocked", "stolen"]:
+            await context.send(f"{sender} : Unkown score type, must be one of; success, failed, blocked, stolen")
+        else:
             score: Optional[int] = await self.get_score(user, score_type)
-            if score is not None:
+            if score is None:
+                await context.send(f"{sender} : Cannot find user \"{user}\" in database.")
+            else:
                 if user != sender:
                     await context.send(f"{sender} : {user} has {'completed' if score_type == 'success' else score_type} {score} pyramids.")
                 else: await context.send(f"{sender} : You have {'completed' if score_type == 'success' else score_type} {score} pyramids.")
-            else: await context.send(f"{sender} : Cannot find user \"{user}\" in database.")
-        else: await context.send(f"{sender} : Unkown score type, must be one of; success, failed, blocked, stolen")
     
     @commands.command()
     async def pyramid_high_scores(self, context: commands.Context) -> None:
         sender: str = context.author.name
         score_type, user = self._get_pyramid_score_args(context)
-        if score_type in ["success", "failed", "blocked", "stolen"]:
+        if score_type not in ["success", "failed", "blocked", "stolen"]:
+            await context.send(f"{sender} : Unkown score type, must be one of; success, failed, blocked, stolen")
+        else:
             high_scores: list[tuple[str, int]] = await self.get_high_scores(score_type)
             await context.send(f"{sender} : Current high scores for {'completed' if score_type == 'success' else score_type} pyramids :: "
                                + ", ".join(f"{make_ordinal(i)}: {result[1]} - {result[0]}" for i, result in enumerate(high_scores, start=1)))
-        else: await context.send(f"{sender} : Unkown score type, must be one of; success, failed, blocked, stolen")
     
     @commands.command()
     async def add_pyramid(self, context: commands.Context) -> None:
