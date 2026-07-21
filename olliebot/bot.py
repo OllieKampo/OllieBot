@@ -4,12 +4,13 @@ import asyncio
 from pathlib import Path
 
 import aiosqlite
+import httpx
 import twitchio
 from twitchio import eventsub
 from twitchio.ext import commands
 
 from .config import TwitchConfig
-from .pyramids import PyramidCog
+from .pyramids import PyramidComponent
 from .helix import TwitchHelixClient
 
 
@@ -35,11 +36,44 @@ class OllieBot(commands.Bot):
             prefix=config.prefix,
         )
 
-        self.pyramid_component = PyramidCog(self)
+        self.pyramid_component = PyramidComponent(self)
 
     @property
     def sql_path(self) -> Path:
         return self.sql_directory / "twitch_channels.sqlite3"
+
+    async def get_broadcaster_id(self, channel_name: str) -> str:
+        cached = self.channel_cache.get(channel_name)
+        if cached is not None and cached[1]:
+            return cached[1]
+
+        user_data = await self.helix.get_user_by_login(channel_name)
+        broadcaster_id = str(user_data["id"])
+        internal_channel_id = cached[0] if cached is not None else None
+        self.channel_cache[channel_name] = (internal_channel_id, broadcaster_id)
+        return broadcaster_id
+
+    async def timeout_user(
+        self,
+        channel_name: str,
+        user_login: str,
+        reason: str,
+        time_secs: int = 600,
+    ) -> bool:
+        try:
+            broadcaster_id = await self.get_broadcaster_id(channel_name)
+            user_data = await self.helix.get_user_by_login(user_login)
+            await self.helix.timeout_user(
+                broadcaster_id=broadcaster_id,
+                moderator_id=self.bot_id,
+                user_id=str(user_data["id"]),
+                duration=time_secs,
+                reason=reason,
+            )
+            return True
+        except (LookupError, httpx.HTTPError, KeyError) as exc:
+            print(f"Failed to timeout {user_login} in {channel_name}: {exc}")
+            return False
 
     async def event_ready(self) -> None:
         print(f"Logged in as {self.bot_id}")

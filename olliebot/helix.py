@@ -10,7 +10,7 @@ class TwitchHelixClient:
     def __init__(self, app_token: str, client_id: str, client: Optional[httpx.AsyncClient] = None) -> None:
         self.app_token = app_token
         self.client_id = client_id
-        self.client = client or httpx.AsyncClient(timeout=10.0)
+        self.client = client if client is not None else httpx.AsyncClient(timeout=10.0)
 
     async def request(self, method: str, path: str, **kwargs: Any) -> Any:
         headers = kwargs.pop("headers", {})
